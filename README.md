@@ -3,23 +3,34 @@
 MCP server that searches vacancies on hh.ru and returns structured cards. Optionally logs in to your account to hide vacancies you already applied to.
 
 - Search and vacancy pages are fetched anonymously with a Chrome TLS/HTTP2 fingerprint (`curl_cffi`), rotating over proxy ports, one request at a time with random pauses. A port that hits a block or captcha rests for 10 minutes.
-- The account lives only in a real Chrome profile (`data/browser-profile`, Playwright) that always uses the first proxy port. Its cookies never reach the search client, so searches are never made as your account. Applied vacancies are filtered locally from `data/applied.json`.
+- The account lives only in a real Chrome profile (`data/browser-profile`, Playwright) that connects directly, without a proxy, like your own browser. Its cookies never reach the search client, and searches always go through the proxies, so they are never made as your account or from your IP. Applied vacancies are filtered locally from `data/applied.json`.
 
 ## Setup
 
 Needs Python 3.12+, [uv](https://docs.astral.sh/uv/) and Google Chrome installed in the system.
 
 ```sh
-cp .env.example .env   # fill in proxy host, port range, login, password
+cp config.example.yaml config.yaml   # fill in your proxies
 uv sync
 ```
 
-`PROXY_PORTS` is a range like `10000-10010`, each port being a different exit IP. The first port is reserved for the account, the rest are used for search.
+`proxies` is a list, each with its own `type` (`http` by default, or `socks5`), host, ports and optional login/password. `ports` is a range like `10000-10010`, a list or one port, each port being a different exit IP. Ports of all proxies form one pool for search; one port is enough. The account does not use proxies.
 
-Add to Claude Code:
+Add to your agent, it runs the server over stdio:
 
 ```sh
-claude mcp add hh -- uv run --directory /path/to/HHMcp hh-mcp
+claude mcp add hh -- uv run --directory /path/to/HHMcp hh-mcp   # Claude Code
+codex mcp add hh -- uv run --directory /path/to/HHMcp hh-mcp    # Codex CLI
+pi mcp add hh -- uv run --directory /path/to/HHMcp hh-mcp       # pi, then `pi mcp list` to check
+```
+
+Codex cuts tool calls after 300 seconds, while `login` waits up to 15 minutes for you. To give it time, set the timeout in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.hh]
+command = "uv"
+args = ["run", "--directory", "/path/to/HHMcp", "hh-mcp"]
+tool_timeout_sec = 900
 ```
 
 ## Tools

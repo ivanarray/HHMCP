@@ -8,7 +8,7 @@ import pytest
 from hh_mcp import hh
 from hh_mcp.account import parse_negotiations
 from hh_mcp.client import Blocked, NotFound, SearchClient, extract_state
-from hh_mcp.config import parse_ports, proxies
+from hh_mcp.config import Config, Proxy, load_config, parse_ports, proxies
 
 FIX = Path(__file__).parent / "fixtures"
 
@@ -60,16 +60,22 @@ def test_page_without_state_is_blocked():
         extract_state("<html>captcha</html>")
 
 
-def test_login_port_never_used_for_search():
-    env = {"PROXY_HOST": "p.example", "PROXY_PORTS": "10000-10002", "PROXY_LOGIN": "u", "PROXY_PASSWORD": "pw"}
-    login, search = proxies(env)
-    assert login == "http://u:pw@p.example:10000"
-    assert search == ["http://u:pw@p.example:10001", "http://u:pw@p.example:10002"]
-    assert parse_ports("1, 3-4") == [1, 3, 4]
+def test_proxies_from_yaml(tmp_path):
+    (tmp_path / "config.yaml").write_text(
+        "proxies:\n"
+        "  - {host: p.example, ports: 10000-10001, login: u, password: 'p@ss#1/:'}\n"
+        "  - {type: socks5, host: q.example, ports: 8080}\n"
+        "request_delay: [0, 1]\n"
+    )
+    cfg = load_config(tmp_path / "config.yaml")
+    urls = proxies(cfg)
+    assert urls == ["http://u:p%40ss%231%2F%3A@p.example:10000", "http://u:p%40ss%231%2F%3A@p.example:10001",
+                    "socks5h://q.example:8080"]
+    assert unquote(urlsplit(urls[0]).password or "") == "p@ss#1/:"
+    assert cfg.request_delay == (0, 1) and parse_ports("1, 3-4") == [1, 3, 4]
+    assert proxies(Config(proxies=[Proxy(host="p.example", ports="10000")])) == ["http://p.example:10000"]
     with pytest.raises(ValueError):
-        proxies(env | {"PROXY_PORTS": "10000"})
-    u = urlsplit(proxies(env | {"PROXY_PASSWORD": "p@ss#1/:"})[0])
-    assert (u.hostname, u.port, unquote(u.password)) == ("p.example", 10000, "p@ss#1/:")
+        proxies(Config(proxies=[]))
 
 
 def fake_client(*responses: tuple[int, str]) -> SearchClient:
@@ -82,8 +88,7 @@ def fake_client(*responses: tuple[int, str]) -> SearchClient:
     async def session(proxy):
         return SimpleNamespace(get=get)
 
-    c = SearchClient(["a", "b"])
-    c.delay = (0, 0)
+    c = SearchClient(Config(proxies=[Proxy(host="p", ports="1-3")], request_delay=(0, 0)))
     c._session = session
     return c
 
@@ -91,7 +96,7 @@ def fake_client(*responses: tuple[int, str]) -> SearchClient:
 def test_get_state_rests_only_blocked_proxies():
     page = (FIX / "search.html").read_text()
     c = fake_client((403, ""), (200, page))
-    assert "vacancySearchResult" in asyncio.run(c.get_state("/x")) and list(c.cooldown) == ["a"]
+    assert "vacancySearchResult" in asyncio.run(c.get_state("/x")) and list(c.cooldown) == ["http://p:1"]
     c = fake_client((502, ""), (200, page))
     asyncio.run(c.get_state("/x"))
     assert c.cooldown == {}

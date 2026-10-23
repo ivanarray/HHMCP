@@ -1,20 +1,32 @@
-import os
 from pathlib import Path
+from typing import Literal
 from urllib.parse import quote
+
+import yaml
+from pydantic import BaseModel, ConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
+CONFIG = ROOT / "config.yaml"
 
 
-def load_env(path: Path = ROOT / ".env") -> dict[str, str]:
-    """Read KEY=VALUE lines from .env; real environment variables win."""
-    env = {}
-    if path.exists():
-        for line in path.read_text().splitlines():
-            key, sep, value = line.partition("=")
-            if sep and not key.lstrip().startswith("#"):
-                env[key.strip()] = value.strip().strip("\"'")
-    return env | dict(os.environ)
+class Proxy(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)  # YAML reads `ports: 8080` or `password: 1234` as numbers
+
+    type: Literal["http", "socks5"] = "http"
+    host: str
+    ports: str  # "10000-10010", "10000, 10002" or one port
+    login: str = ""
+    password: str = ""
+
+
+class Config(BaseModel):
+    proxies: list[Proxy]
+    request_delay: tuple[float, float] = (2, 5)  # random pause between search requests, seconds
+
+
+def load_config(path: Path = CONFIG) -> Config:
+    return Config.model_validate(yaml.safe_load(path.read_text()))
 
 
 def parse_ports(spec: str) -> list[int]:
@@ -29,12 +41,13 @@ def parse_ports(spec: str) -> list[int]:
     return ports
 
 
-def proxies(env: dict[str, str] | None = None) -> tuple[str, list[str]]:
-    """Return (login_proxy, search_proxies). The first port is reserved for the account."""
-    env = env or load_env()
-    ports = parse_ports(env["PROXY_PORTS"])
-    if len(ports) < 2:
-        raise ValueError("PROXY_PORTS needs at least 2 ports: one for login, the rest for search")
-    auth = f"{quote(env['PROXY_LOGIN'], safe='')}:{quote(env['PROXY_PASSWORD'], safe='')}@" if env.get("PROXY_LOGIN") else ""
-    urls = [f"http://{auth}{env['PROXY_HOST']}:{p}" for p in ports]
-    return urls[0], urls[1:]
+def proxies(cfg: Config | None = None) -> list[str]:
+    """Search proxy URLs, one per port of every proxy."""
+    urls = []
+    for p in (cfg or load_config()).proxies:
+        auth = f"{quote(p.login, safe='')}:{quote(p.password, safe='')}@" if p.login else ""
+        scheme = "socks5h" if p.type == "socks5" else "http"  # socks5h: curl resolves DNS through the proxy too
+        urls += [f"{scheme}://{auth}{p.host}:{port}" for port in parse_ports(p.ports)]
+    if not urls:
+        raise ValueError("config.yaml needs at least one proxy port")
+    return urls

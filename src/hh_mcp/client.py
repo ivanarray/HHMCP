@@ -9,7 +9,7 @@ import time
 from curl_cffi.requests import AsyncSession
 from mcp.server.mcpserver.exceptions import ToolError
 
-from hh_mcp.config import load_env, proxies
+from hh_mcp.config import Config, load_config, proxies
 
 log = logging.getLogger(__name__)
 
@@ -37,10 +37,10 @@ def extract_state(page: str) -> dict:
 class SearchClient:
     """Anonymous hh.ru client: one curl_cffi session (own cookie jar) per search proxy, one request at a time."""
 
-    def __init__(self, search_proxies: list[str] | None = None):
-        env = load_env()
-        self.delay = (float(env.get("REQUEST_DELAY_MIN", 2)), float(env.get("REQUEST_DELAY_MAX", 5)))
-        self.proxies = search_proxies if search_proxies is not None else proxies(env)[1]
+    def __init__(self, cfg: Config | None = None):
+        cfg = cfg or load_config()
+        self.delay = cfg.request_delay
+        self.proxies = proxies(cfg)
         self.sessions: dict[str, AsyncSession] = {}
         self.cooldown: dict[str, float] = {}
         self.next = 0

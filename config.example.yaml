@@ -1,0 +1,14 @@
+# Copy to config.yaml and fill in. Proxies are used for search only; every port of every proxy
+# is a separate exit IP. The account login runs in Chrome directly, without a proxy.
+proxies:
+  - type: http                # http (default) or socks5
+    host: proxy1.example.com
+    ports: 10000-10010        # a range, a list "10000, 10005" or one port
+    login: user
+    password: "secret"        # quote values with special characters
+  - type: socks5              # DNS is resolved through the proxy too
+    host: proxy2.example.com
+    ports: 1080               # login and password are optional
+
+# random pause between search requests, seconds: [min, max]
+request_delay: [2, 5]

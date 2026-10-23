@@ -3,12 +3,11 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
-from urllib.parse import unquote, urlsplit
 
 from playwright.async_api import BrowserContext, async_playwright
 
 from hh_mcp.client import BASE, extract_state
-from hh_mcp.config import DATA_DIR, proxies
+from hh_mcp.config import DATA_DIR
 
 log = logging.getLogger(__name__)
 
@@ -25,13 +24,10 @@ def load_applied() -> set[int] | None:
 
 
 async def _browser(p, headless: bool) -> BrowserContext:
-    """Real Chrome with the persistent account profile, always via the login proxy (first port)."""
-    u = urlsplit(proxies()[0])
+    """Real Chrome with the persistent account profile, connected directly: proxies are for anonymous search only."""
     PROFILE.mkdir(parents=True, exist_ok=True)
     return await p.chromium.launch_persistent_context(
         PROFILE, channel="chrome", headless=headless, locale="ru-RU", timezone_id="Europe/Moscow",
-        proxy={"server": f"http://{u.hostname}:{u.port}", "username": unquote(u.username or ""),
-               "password": unquote(u.password or "")},
     )
 
 
