@@ -1,0 +1,26 @@
+[project]
+name = "hh-mcp"
+version = "0.1.0"
+description = "MCP server that searches hh.ru vacancies through proxies and hides the ones you already applied to"
+authors = [
+    { name = "ivanarray", email = "73218360+ivanarray@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "curl-cffi>=0.16.3",
+    "markdownify>=1.2.3",
+    "mcp>=2.3.0",
+    "playwright>=1.64.1",
+]
+
+[project.scripts]
+hh-mcp = "hh_mcp.server:main"
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
